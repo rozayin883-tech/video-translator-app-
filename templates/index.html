@@ -83,7 +83,7 @@
 
     <div class="container" id="mainContainer">
         <h2>🎬 បកប្រែវីដេអូ AI</h2>
-        <p>ជ្រើសរើសវីដេអូដើម្បីបកប្រែជាសំឡេង AI ភាសាខ្មែរ</p>
+        <p>ជ្រើសរើសវីដេអូភាសាចិន ដើម្បីបកប្រែជាសំឡេង AI ភាសាខ្មែរ</p>
 
         <form id="uploadForm" onsubmit="startUpload(event)">
             <label class="upload-box" for="videoFile">
@@ -95,20 +95,20 @@
     </div>
 
     <div class="container" id="loadingScreen">
-        <h2>⏳ កំពុងដំណើរការបកប្រែ...</h2>
-        <p>អ្នកអាចចេញទៅលេងកម្មវិធីផ្សេងបាន វានឹងដំណើរការបន្តស្វ័យប្រវត្តិ!</p>
+        <h2>⏳ កំពុងដំណើរការ AI...</h2>
+        <p id="statusMsg">កំពុងត្រៀមប្រព័ន្ធបកប្រែ...</p>
         
         <div class="progress-bar-container">
             <div class="progress-bar" id="progressBar"></div>
         </div>
-        <div id="statusText">0% (នៅសល់ប្រហែល -- វិនាទី)</div>
+        <div id="statusText">0%</div>
     </div>
 
     <div class="container" id="resultScreen">
         <h2>🎉 បកប្រែជោគជ័យ!</h2>
         <p>វីដេអូរបស់អ្នកត្រូវបានបកប្រែជាសំឡេង AI ភាសាខ្មែររួចរាល់ហើយ។</p>
         
-        <a id="downloadLink" href="#" class="download-btn" download="translated_video.mp4">📥 រក្សាទុកវីដេអូ (Save to Photos/Files)</a>
+        <a id="downloadLink" href="#" class="download-btn" download="translated_video.mp4">📥 រក្សាទុកវីដេអូ (Save to Device)</a>
         <button onclick="resetApp()" style="background-color: #334155; margin-top: 10px;">បកប្រែវីដេអូផ្សេងទៀត</button>
     </div>
 
@@ -116,21 +116,12 @@
         let tg = window.Telegram.WebApp;
         tg.expand();
 
-        let selectedVideoDuration = 0;
         let selectedFile = null;
 
         function handleFileSelect(input) {
             if (input.files && input.files[0]) {
                 selectedFile = input.files[0];
                 document.getElementById('fileName').innerText = "📄 " + selectedFile.name;
-
-                let videoElement = document.createElement('video');
-                videoElement.preload = 'metadata';
-                videoElement.onloadedmetadata = function() {
-                    window.URL.revokeObjectURL(videoElement.src);
-                    selectedVideoDuration = videoElement.duration;
-                }
-                videoElement.src = URL.createObjectURL(selectedFile);
             }
         }
 
@@ -141,7 +132,6 @@
 
             let formData = new FormData();
             formData.append('video', selectedFile);
-            formData.append('duration', selectedVideoDuration);
 
             fetch('/process', {
                 method: 'POST',
@@ -150,8 +140,7 @@
             .then(response => response.json())
             .then(data => {
                 if (data.status === 'success') {
-                    let taskId = data.task_id;
-                    pollStatus(taskId);
+                    pollStatus(data.task_id);
                 }
             })
             .catch(err => console.error(err));
@@ -160,6 +149,7 @@
         function pollStatus(taskId) {
             let progressBar = document.getElementById('progressBar');
             let statusText = document.getElementById('statusText');
+            let statusMsg = document.getElementById('statusMsg');
 
             let interval = setInterval(function() {
                 fetch('/status/' + taskId)
@@ -167,25 +157,28 @@
                 .then(data => {
                     if (data.status === 'processing') {
                         progressBar.style.width = data.progress + '%';
-                        statusText.innerText = `${data.progress}% (នៅសល់ប្រហែល ${data.remaining} វិនាទី)`;
+                        statusText.innerText = data.progress + '%';
+                        if(data.status_msg) statusMsg.innerText = data.status_msg;
                     } else if (data.status === 'completed') {
                         clearInterval(interval);
                         progressBar.style.width = '100%';
                         document.getElementById('loadingScreen').style.display = 'none';
                         document.getElementById('resultScreen').style.display = 'flex';
                         
-                        if(selectedFile) {
-                            let fileURL = URL.createObjectURL(selectedFile);
-                            document.getElementById('downloadLink').href = fileURL;
-                        }
+                        document.getElementById('downloadLink').href = '/download/' + data.output_file;
+                    } else if (data.status === 'error') {
+                        clearInterval(interval);
+                        alert('เกิดข้อผิดพลาด: ' + data.status_msg);
+                        resetApp();
                     }
                 })
                 .catch(err => console.error(err));
-            }, 2000); // ពិនិត្យស្ថានភាពជាមួយ Server រាល់ ២ វិនាទីម្តង
+            }, 3000);
         }
 
         function resetApp() {
             document.getElementById('resultScreen').style.display = 'none';
+            document.getElementById('loadingScreen').style.display = 'none';
             document.getElementById('mainContainer').style.display = 'flex';
             document.getElementById('uploadForm').reset();
             document.getElementById('fileName').innerText = "📁 ចុចទីនេះដើម្បីជ្រើសរើសវីដេអូ";
