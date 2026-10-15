@@ -27,15 +27,8 @@
             box-shadow: 0 4px 20px rgba(0,0,0,0.3);
             text-align: center;
         }
-        h2 {
-            font-size: 20px;
-            margin-bottom: 8px;
-        }
-        p {
-            font-size: 14px;
-            color: #94a3b8;
-            margin-bottom: 20px;
-        }
+        h2 { font-size: 20px; margin-bottom: 8px; }
+        p { font-size: 14px; color: #94a3b8; margin-bottom: 20px; }
         .upload-box {
             border: 2px dashed #3b82f6;
             padding: 20px;
@@ -45,9 +38,7 @@
             background: #0f172a;
             display: block;
         }
-        input[type="file"] {
-            display: none;
-        }
+        input[type="file"] { display: none; }
         button, .download-btn {
             width: 100%;
             padding: 12px;
@@ -64,9 +55,7 @@
             box-sizing: border-box;
             transition: background 0.3s;
         }
-        button:hover, .download-btn:hover {
-            background-color: #0369a1;
-        }
+        button:hover, .download-btn:hover { background-color: #0369a1; }
         #loadingScreen, #resultScreen {
             display: none;
             flex-direction: column;
@@ -87,16 +76,11 @@
             background-color: #38bdf8;
             transition: width 0.3s linear;
         }
-        #statusText {
-            font-size: 14px;
-            color: #38bdf8;
-            font-weight: 500;
-        }
+        #statusText { font-size: 14px; color: #38bdf8; font-weight: 500; }
     </style>
 </head>
 <body>
 
-    <!-- ទំព័រដើមសម្រាប់ Upload -->
     <div class="container" id="mainContainer">
         <h2>🎬 បកប្រែវីដេអូ AI</h2>
         <p>ជ្រើសរើសវីដេអូដើម្បីបកប្រែជាសំឡេង AI ភាសាខ្មែរ</p>
@@ -110,18 +94,16 @@
         </form>
     </div>
 
-    <!-- អេក្រង់រង់ចាំដំណើរការ (លឿនត្រឹម ៣-៥ វិនាទី) -->
     <div class="container" id="loadingScreen">
         <h2>⏳ កំពុងដំណើរការបកប្រែ...</h2>
-        <p>កំពុងបង្កើតសំឡេង AI ភាសាខ្មែរជូនលោកអ្នក...</p>
+        <p>អ្នកអាចចេញទៅលេងកម្មវិធីផ្សេងបាន វានឹងដំណើរការបន្តស្វ័យប្រវត្តិ!</p>
         
         <div class="progress-bar-container">
             <div class="progress-bar" id="progressBar"></div>
         </div>
-        <div id="statusText">0% (នៅសល់ប្រហែល ៤ វិនាទី)</div>
+        <div id="statusText">0% (នៅសល់ប្រហែល -- វិនាទី)</div>
     </div>
 
-    <!-- ទំព័របញ្ចប់សម្រាប់ Save ចូល Device / Photos -->
     <div class="container" id="resultScreen">
         <h2>🎉 បកប្រែជោគជ័យ!</h2>
         <p>វីដេអូរបស់អ្នកត្រូវបានបកប្រែជាសំឡេង AI ភាសាខ្មែររួចរាល់ហើយ។</p>
@@ -134,12 +116,21 @@
         let tg = window.Telegram.WebApp;
         tg.expand();
 
+        let selectedVideoDuration = 0;
         let selectedFile = null;
 
         function handleFileSelect(input) {
             if (input.files && input.files[0]) {
                 selectedFile = input.files[0];
                 document.getElementById('fileName').innerText = "📄 " + selectedFile.name;
+
+                let videoElement = document.createElement('video');
+                videoElement.preload = 'metadata';
+                videoElement.onloadedmetadata = function() {
+                    window.URL.revokeObjectURL(videoElement.src);
+                    selectedVideoDuration = videoElement.duration;
+                }
+                videoElement.src = URL.createObjectURL(selectedFile);
             }
         }
 
@@ -148,32 +139,49 @@
             document.getElementById('mainContainer').style.display = 'none';
             document.getElementById('loadingScreen').style.display = 'flex';
 
-            // កំណត់រយៈពេលរង់ចាំលឿនត្រឹម ៤ វិនាទី
-            let totalSeconds = ៤;
-            let elapsedSeconds = 0;
+            let formData = new FormData();
+            formData.append('video', selectedFile);
+            formData.append('duration', selectedVideoDuration);
+
+            fetch('/process', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    let taskId = data.task_id;
+                    pollStatus(taskId);
+                }
+            })
+            .catch(err => console.error(err));
+        }
+
+        function pollStatus(taskId) {
             let progressBar = document.getElementById('progressBar');
             let statusText = document.getElementById('statusText');
 
-            let timer = setInterval(function() {
-                elapsedSeconds++;
-                let percent = Math.min(Math.floor((elapsedSeconds / totalSeconds) * 100), 100);
-                let remainingSeconds = Math.max(totalSeconds - elapsedSeconds, 0);
-
-                progressBar.style.width = percent + '%';
-                statusText.innerText = `${percent}% (នៅសល់ប្រហែល ${remainingSeconds} វិនាទី)`;
-
-                if (elapsedSeconds >= totalSeconds || percent >= 100) {
-                    clearInterval(timer);
-                    document.getElementById('loadingScreen').style.display = 'none';
-                    document.getElementById('resultScreen').style.display = 'flex';
-                    
-                    if(selectedFile) {
-                        let fileURL = URL.createObjectURL(selectedFile);
-                        let dlLink = document.getElementById('downloadLink');
-                        dlLink.href = fileURL;
+            let interval = setInterval(function() {
+                fetch('/status/' + taskId)
+                .then(res => res.json())
+                .then(data => {
+                    if (data.status === 'processing') {
+                        progressBar.style.width = data.progress + '%';
+                        statusText.innerText = `${data.progress}% (នៅសល់ប្រហែល ${data.remaining} វិនាទី)`;
+                    } else if (data.status === 'completed') {
+                        clearInterval(interval);
+                        progressBar.style.width = '100%';
+                        document.getElementById('loadingScreen').style.display = 'none';
+                        document.getElementById('resultScreen').style.display = 'flex';
+                        
+                        if(selectedFile) {
+                            let fileURL = URL.createObjectURL(selectedFile);
+                            document.getElementById('downloadLink').href = fileURL;
+                        }
                     }
-                }
-            }, 1000);
+                })
+                .catch(err => console.error(err));
+            }, 2000); // ពិនិត្យស្ថានភាពជាមួយ Server រាល់ ២ វិនាទីម្តង
         }
 
         function resetApp() {
