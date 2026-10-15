@@ -4,7 +4,7 @@ import threading
 import uuid
 import subprocess
 from flask import Flask, render_template, request, jsonify, send_from_directory
-import whisper
+from openai import OpenAI
 from deep_translator import GoogleTranslator
 from gtts import gTTS
 
@@ -18,10 +18,8 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['OUTPUT_FOLDER'] = OUTPUT_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 200 * 1024 * 1024
 
-# โหลด Whisper AI Model (ប្រើ base model សម្រាប់ល្បឿនលឿននិងសមល្មម)
-print("Loading Whisper AI Model...")
-model = whisper.load_model("base")
-print("Whisper AI Model Loaded Successfully!")
+# ភ្ជាប់ទៅកាន់ OpenAI API ដោយស្វ័យប្រវត្តិពី Environment Variables
+client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
 tasks = {}
 
@@ -31,35 +29,40 @@ def index():
 
 def process_video_ai(task_id, input_path, output_path):
     try:
-        # ជំហានទី ១៖ ទាញយកសំឡេងចេញពីវីដេអូ (Extract Audio)
-        tasks[task_id]['progress'] = 15
-        tasks[task_id]['status_msg'] = 'กำลังแยกเสียงออกจากวิดีโอ...'
+        # ជំហានទី ១៖ ទាញយកសំឡេងចេញពីវីដេអូ
+        tasks[task_id]['progress'] = 20
+        tasks[task_id]['status_msg'] = 'កំពុងទាញយកសំឡេងចេញពីវីដេអូ...'
         audio_path = input_path.replace('.mp4', '.mp3')
         subprocess.run(['ffmpeg', '-y', '-i', input_path, '-q:a', '0', '-map', 'a', audio_path], check=True)
 
-        # ជំហានទី ២៖ ប្រើប្រាស់ Whisper AI ដើម្បីស្តាប់និងបម្លែងសំឡេងចិនជាអត្ថបទ (STT)
-        tasks[task_id]['progress'] = 40
-        tasks[task_id]['status_msg'] = 'AI กำลังถอดเสียงภาษาจีน...'
-        result = model.transcribe(audio_path, language="zh")
-        chinese_text = result["text"]
+        # ជំហានទី ២៖ ប្រើប្រាស់ OpenAI Whisper API ដើម្បីស្តាប់ និងបម្លែងសំឡេងចិនជាអត្ថបទ
+        tasks[task_id]['progress'] = 50
+        tasks[task_id]['status_msg'] = 'AI កំពុងស្តាប់ និងបកប្រែសំឡេង...'
+        with open(audio_path, "rb") as audio_file:
+            transcript = client.audio.transcriptions.create(
+                model="whisper-1",
+                file=audio_file,
+                response_format="text"
+            )
+        chinese_text = transcript
 
-        # ជំហានទី ៣៖ បកប្រែអត្ថបទពីចិនទៅជាភាសាខ្មែរ (Translation)
-        tasks[task_id]['progress'] = 65
-        tasks[task_id]['status_msg'] = 'กำลังแปลเป็นภาษาเขมร...'
+        # ជំហានទី ៣៖ បកប្រែអត្ថបទពីចិនទៅជាភាសាខ្មែរ
+        tasks[task_id]['progress'] = 70
+        tasks[task_id]['status_msg'] = 'កំពុងបកប្រែអត្ថបទជាភាសាខ្មែរ...'
         khmer_text = GoogleTranslator(source='zh-CN', target='km').translate(chinese_text)
         if not khmer_text:
-            khmer_text = "សួស្តី នេះគឺជាការបកប្រែវីដេអូជាភាសាខ្មែរ"
+            khmer_text = "សួស្តី នេះគឺជាវីដេអូបកប្រែ"
 
-        # ជំហានទី ៤៖ បង្កើតសំឡេងនិយាយ AI ភាសាខ្មែរ (Text-to-Speech)
-        tasks[task_id]['progress'] = 80
-        tasks[task_id]['status_msg'] = 'กำลังสร้างเสียงพูด AI ภาษาเขมร...'
+        # ជំហានទី ៤៖ បង្កើតសំឡេងនិយាយ AI ភាសាខ្មែរ
+        tasks[task_id]['progress'] = 85
+        tasks[task_id]['status_msg'] = 'កំពុងបង្កើតសំឡេង AI ភាសាខ្មែរ...'
         tts = gTTS(text=khmer_text, lang='km')
         khmer_audio_path = input_path.replace('.mp4', '_km.mp3')
         tts.save(khmer_audio_path)
 
-        # ជំហានទី ៥៖ បញ្ចូលសំឡេងខ្មែរថ្មីជំនួសសំឡេងដើមក្នុងវីដេអូ (Muxing)
+        # ជំហានទី ៥៖ បញ្ចូលសំឡេងខ្មែរថ្មីជំនួសសំឡេងដើមក្នុងវីដេអូ
         tasks[task_id]['progress'] = 95
-        tasks[task_id]['status_msg'] = 'กำลังรวมเสียงเข้ากับวิดีโอ...'
+        tasks[task_id]['status_msg'] = 'កំពុងបញ្ចូលសំឡេងថ្មីចូលវីដេអូ...'
         subprocess.run([
             'ffmpeg', '-y', '-i', input_path, '-i', khmer_audio_path,
             '-c:v', 'copy', '-map', '0:v:0', '-map', '1:a:0',
@@ -68,7 +71,7 @@ def process_video_ai(task_id, input_path, output_path):
 
         tasks[task_id]['progress'] = 100
         tasks[task_id]['status'] = 'completed'
-        tasks[task_id]['status_msg'] = 'แปลเสร็จสมบูรณ์!'
+        tasks[task_id]['status_msg'] = 'បកប្រែរួចរាល់!'
         tasks[task_id]['output_file'] = os.path.basename(output_path)
 
     except Exception as e:
@@ -92,8 +95,8 @@ def process_video():
         
         tasks[task_id] = {
             'status': 'processing',
-            'progress': 5,
-            'status_msg': 'กำลังอัปโหลดไฟล์...'
+            'progress': 10,
+            'status_msg': 'កំពុងផ្ទុកវីដេអូចូលប្រព័ន្ធ...'
         }
         
         thread = threading.Thread(target=process_video_ai, args=(task_id, input_path, output_path))
