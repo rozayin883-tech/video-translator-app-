@@ -1,5 +1,5 @@
 Flask
-openai-whisper
+openai
 deep-translator
 gTTS
-torch
+requests
