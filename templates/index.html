@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="km">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Translation App</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        body { background-color: #121212; color: #ffffff; font-family: sans-serif; padding: 20px; text-align: center; }
+        input, button { width: 100%; padding: 14px; margin: 10px 0; border-radius: 10px; border: none; font-size: 16px; }
+        input { background-color: #1e1e1e; color: #ffffff; border: 1px solid #333; }
+        button { background-color: #0088cc; color: white; font-weight: bold; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h2>🎥 បកប្រែវីដេអូ AI</h2>
+    <p>បញ្ចូល Link វីដេអូ YouTube ឬ TikTok ដើម្បីបកប្រែជាភាសាខ្មែរ</p>
+    
+    <input type="text" id="videoLink" placeholder="YouTube / TikTok Link...">
+    <button onclick="startTranslation()">ចាប់ផ្តើមបកប្រែ</button>
+
+    <script>
+        let tg = window.Telegram.WebApp;
+        tg.expand();
+
+        function startTranslation() {
+            let link = document.getElementById("videoLink").value;
+            if(!link) {
+                alert("សូមបញ្ចូល Link ជាមុនសិន!");
+                return;
+            }
+            
+            fetch('/api/translate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ link: link })
+            })
+            .then(res => res.json())
+            .then(data => {
+                alert(data.message);
+            });
+        }
+    </script>
+</body>
+</html>
