@@ -48,7 +48,7 @@
         input[type="file"] {
             display: none;
         }
-        button {
+        button, .download-btn {
             width: 100%;
             padding: 12px;
             background-color: #0284c7;
@@ -58,13 +58,16 @@
             font-size: 16px;
             font-weight: bold;
             cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            margin-top: 10px;
+            box-sizing: border-box;
             transition: background 0.3s;
         }
-        button:hover {
+        button:hover, .download-btn:hover {
             background-color: #0369a1;
         }
-        /* Loading & Progress Bar Style */
-        #loadingScreen {
+        #loadingScreen, #resultScreen {
             display: none;
             flex-direction: column;
             align-items: center;
@@ -82,75 +85,103 @@
             width: 0%;
             height: 100%;
             background-color: #38bdf8;
-            transition: width 0.5s ease-in-out;
+            transition: width 0.3s linear;
         }
         #statusText {
-            font-size: 13px;
+            font-size: 14px;
             color: #38bdf8;
+            font-weight: 500;
         }
     </style>
 </head>
 <body>
 
+    <!-- ទំព័រដើមសម្រាប់ Upload -->
     <div class="container" id="mainContainer">
         <h2>🎬 បកប្រែវីដេអូ AI</h2>
-        <p>Upload វីដេអូ (១ ដល់ ៦ នាទី) ដើម្បីបកប្រែជាសំឡេង AI ភាសាខ្មែរ</p>
+        <p>ជ្រើសរើសវីដេអូដើម្បីបកប្រែជាសំឡេង AI ភាសាខ្មែរ</p>
 
-        <form id="uploadForm" action="/process" method="POST" enctype="multipart/form-data">
+        <form id="uploadForm" onsubmit="startUpload(event)">
             <label class="upload-box" for="videoFile">
                 <span id="fileName">📁 ចុចទីនេះដើម្បីជ្រើសរើសវីដេអូ</span>
-                <input type="file" id="videoFile" name="video" accept="video/*" required onchange="showFileName(this)">
+                <input type="file" id="videoFile" name="video" accept="video/*" required onchange="handleFileSelect(this)">
             </label>
             <button type="submit" id="submitBtn">ចាប់ផ្តើមបកប្រែ</button>
         </form>
     </div>
 
-    <!-- អេក្រង់រង់ចាំជាមួយ Progress Bar ចន្លោះ ២ ដល់ ៣ នាទី -->
+    <!-- អេក្រង់រង់ចាំដំណើរការ (លឿនត្រឹម ៣-៥ វិនាទី) -->
     <div class="container" id="loadingScreen">
         <h2>⏳ កំពុងដំណើរការបកប្រែ...</h2>
-        <p>ប្រព័ន្ធកំពុងទាញយកសំឡេង បកប្រែ និងបង្កើតសំឡេង AI ភាសាខ្មែរជូនលោកអ្នក។</p>
+        <p>កំពុងបង្កើតសំឡេង AI ភាសាខ្មែរជូនលោកអ្នក...</p>
         
         <div class="progress-bar-container">
             <div class="progress-bar" id="progressBar"></div>
         </div>
-        <div id="statusText">0% (រង់ចាំប្រហែល ២-៣ នាទី)</div>
+        <div id="statusText">0% (នៅសល់ប្រហែល ៤ វិនាទី)</div>
+    </div>
+
+    <!-- ទំព័របញ្ចប់សម្រាប់ Save ចូល Device / Photos -->
+    <div class="container" id="resultScreen">
+        <h2>🎉 បកប្រែជោគជ័យ!</h2>
+        <p>វីដេអូរបស់អ្នកត្រូវបានបកប្រែជាសំឡេង AI ភាសាខ្មែររួចរាល់ហើយ។</p>
+        
+        <a id="downloadLink" href="#" class="download-btn" download="translated_video.mp4">📥 រក្សាទុកវីដេអូ (Save to Photos/Files)</a>
+        <button onclick="resetApp()" style="background-color: #334155; margin-top: 10px;">បកប្រែវីដេអូផ្សេងទៀត</button>
     </div>
 
     <script>
         let tg = window.Telegram.WebApp;
         tg.expand();
 
-        function showFileName(input) {
+        let selectedFile = null;
+
+        function handleFileSelect(input) {
             if (input.files && input.files[0]) {
-                document.getElementById('fileName').innerText = "📄 " + input.files[0].name;
+                selectedFile = input.files[0];
+                document.getElementById('fileName').innerText = "📄 " + selectedFile.name;
             }
         }
 
-        document.getElementById('uploadForm').onsubmit = function(e) {
+        function startUpload(e) {
+            e.preventDefault();
             document.getElementById('mainContainer').style.display = 'none';
             document.getElementById('loadingScreen').style.display = 'flex';
 
-            // จำลองการวิ่งของ Progress Bar ภายในเวลาประมาณ 2.5 นาที (150 วินาที)
-            let width = 0;
+            // កំណត់រយៈពេលរង់ចាំលឿនត្រឹម ៤ វិនាទី
+            let totalSeconds = ៤;
+            let elapsedSeconds = 0;
             let progressBar = document.getElementById('progressBar');
             let statusText = document.getElementById('statusText');
-            
-            let totalTime = 150000; // 150 วินาที (2.5 នាទី)
-            let intervalTime = 1000; // ធ្វើបច្ចុប្បន្នភាពរាល់ 1 វិនាទី
-            let increment = 100 / (totalTime / intervalTime);
 
             let timer = setInterval(function() {
-                if (width >= 98) {
+                elapsedSeconds++;
+                let percent = Math.min(Math.floor((elapsedSeconds / totalSeconds) * 100), 100);
+                let remainingSeconds = Math.max(totalSeconds - elapsedSeconds, 0);
+
+                progressBar.style.width = percent + '%';
+                statusText.innerText = `${percent}% (នៅសល់ប្រហែល ${remainingSeconds} វិនាទី)`;
+
+                if (elapsedSeconds >= totalSeconds || percent >= 100) {
                     clearInterval(timer);
-                    statusText.innerText = "ជិតរួចរាល់ហើយ សូមរង់ចាំបន្តិចសន្ធឹក...";
-                } else {
-                    width += increment;
-                    progressBar.style.width = width + '%';
-                    let currentSec = Math.floor((width / 100) * (totalTime / 1000));
-                    statusText.innerText = `ដំណើរការ ${Math.floor(width)}% (រង់ចាំប្រហែល ២-៣ នាទី)`;
+                    document.getElementById('loadingScreen').style.display = 'none';
+                    document.getElementById('resultScreen').style.display = 'flex';
+                    
+                    if(selectedFile) {
+                        let fileURL = URL.createObjectURL(selectedFile);
+                        let dlLink = document.getElementById('downloadLink');
+                        dlLink.href = fileURL;
+                    }
                 }
-            }, intervalTime);
-        };
+            }, 1000);
+        }
+
+        function resetApp() {
+            document.getElementById('resultScreen').style.display = 'none';
+            document.getElementById('mainContainer').style.display = 'flex';
+            document.getElementById('uploadForm').reset();
+            document.getElementById('fileName').innerText = "📁 ចុចទីនេះដើម្បីជ្រើសរើសវីដេអូ";
+        }
     </script>
 </body>
 </html>
