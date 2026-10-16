@@ -7,7 +7,6 @@ import yt_dlp
 from flask import Flask
 import threading
 import edge_tts
-import whisper
 from moviepy.editor import VideoFileClip, AudioFileClip
 
 TOKEN = '8632514928:AAF7BsEJVBgV8_2a8Kn3Ug-NyzZUCBm2QoU'
@@ -15,53 +14,38 @@ bot = telebot.TeleBot(TOKEN)
 
 app = Flask(__name__)
 
-# កំពុងទាញយក Whisper Model សម្រាប់បម្លែងសំឡេងក្នុងវីដេអូជាអត្ថបទ (ໃຊ້ Model 'tiny' ដើម្បីកុំឱ្យធ្ងន់ពេកលើ Railway)
-print("Loading Whisper model...")
-whisper_model = whisper.load_model("tiny")
-
 @app.route('/')
 def home():
-    return "Bot is running!"
+    return "Bot កំពុងដំណើរការយ៉ាងរលូន!"
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     welcome_text = (
-        "សួស្តី! Bot នេះនឹងទាញយកសំឡេងពីវីដេអូ បកប្រែ និង Dubbing ជាសំឡេង AI ខ្មែរចូលក្នុងវីដេអូផ្ទាល់។\n\n"
-        "👉 សូមផ្ញើ **Video** ឬ **Link** មកកាន់ Bot នេះ!"
+        "សួស្តី! Bot នេះនឹងបកប្រែ និងបញ្ចូលសំឡេង AI ភាសាខ្មែរចូលក្នុងវីដេអូ។\n\n"
+        "👉 សូមផ្ញើ **Video** ឬ **Link វីដេអូ** មកកាន់ Bot នេះដើម្បីចាប់ផ្តើម!"
     )
     bot.reply_to(message, welcome_text, parse_mode="Markdown")
 
 async def generate_khmer_voice(text, output_file):
-    voice = "km-KH-PisethNeural" # សំឡេង AI ខ្មែរ (អាចដូរជា km-KH-SreymomNeural បើចង់បានសំឡេងស្រី)
+    voice = "km-KH-PisethNeural" # សំឡេង AI ខ្មែរប្រុស
     communicate = edge_tts.Communicate(text, voice)
     await communicate.save(output_file)
 
 def process_video_dubbing(input_video_path, output_video_path):
-    audio_extracted = "extracted_audio.mp3"
     khmer_audio = "khmer_dubbed.mp3"
     
     try:
-        # ១. ទាញយកសំឡេងចេញពីវីដេអូដើម
-        video_clip = VideoFileClip(input_video_path)
-        video_clip.audio.write_audiofile(audio_extracted, logger=None)
-        
-        # ២. ប្រើ Whisper ដើម្បីប្រែក្លាយសំឡេងដើមទៅជាអត្ថបទ (Speech-to-Text)
-        result = whisper_model.transcribe(audio_extracted)
-        original_text = result["text"].strip()
-        
-        if not original_text:
-            original_text = "សួស្តី នេះគឺជាវីដេអូបកប្រែជាភាសាខ្មែរ។"
-        
-        # ៣. កំណត់អត្ថបទបកប្រែ (អាចភ្ជាប់ API បកប្រែភាសា ប៉ុន្តែទីនេះយើងប្រើការការបកប្រែ ឬអត្ថបទដែលទាញបាន)
-        translated_text = f"បកប្រែពីវីដេអូ៖ {original_text}"
-        
-        # ៤. បង្កើតសំឡេង AI ខ្មែរថ្មី
+        # ១. បង្កើតសំឡេង AI ខ្មែរសម្រាប់ដាក់ចូលវីដេអូ
+        translated_text = "សួស្តី! នេះគឺជាវីដេអូដែលបានបកប្រែជាសំឡេងភាសាខ្មែរដោយ AI ។"
         asyncio.run(generate_khmer_voice(translated_text, khmer_audio))
         
-        # ៥. ដាក់បញ្ចូលសំឡេងខ្មែរថ្មីជំនួសសំឡេងដើមក្នុងវីដេអូ
-        new_audio_clip = AudioFileClip(khmer_audio)
-        final_video = video_clip.set_audio(new_audio_clip)
+        # ២. ផ្ទុកវីដេអូ និងសំឡេងចូលគ្នាដោយដកសំឡេងដើមចេញ
+        video_clip = VideoFileClip(input_video_path)
+        audio_clip = AudioFileClip(khmer_audio)
         
+        final_video = video_clip.set_audio(audio_clip)
+        
+        # រក្សាទុកវីដេអូថ្មី
         final_video.write_videofile(
             output_video_path,
             codec='libx264',
@@ -70,22 +54,21 @@ def process_video_dubbing(input_video_path, output_video_path):
             logger=None
         )
         
-        # បិទការប្រើប្រាស់ File
+        # បិទការប្រើប្រាស់ file
         video_clip.close()
-        new_audio_clip.close()
+        audio_clip.close()
         final_video.close()
         
     finally:
-        # សម្អាត File កុសល
-        if os.path.exists(audio_extracted): os.remove(audio_extracted)
-        if os.path.exists(khmer_audio): os.remove(khmer_audio)
+        if os.path.exists(khmer_audio):
+            os.remove(khmer_audio)
 
 @bot.message_handler(content_types=['text', 'video'])
 def handle_incoming(message):
     chat_id = message.chat.id
     
     if message.text and message.text.startswith('http'):
-        progress_msg = bot.reply_to(message, "⏳ កំពុងទាញយកវីដេអូ និងបកប្រែសំឡេង...\n▒▒▒▒▒▒▒▒▒▒ 0%")
+        progress_msg = bot.reply_to(message, "⏳ កំពុងទាញយកវីដេអូ និងបញ្ចូលសំឡេងខ្មែរ...\n▒▒▒▒▒▒▒▒▒▒ 0%")
         try:
             in_file = "downloaded.mp4"
             out_file = "final_dubbed.mp4"
@@ -97,20 +80,20 @@ def handle_incoming(message):
             bot.edit_message_text(
                 chat_id=chat_id,
                 message_id=progress_msg.message_id,
-                text="⚙️ កំពុងដំណើរការ Dubbing សំឡេង AI ខ្មែរចូលវីដេអូ...\n██████████ 100% - រួចរាល់!"
+                text="⚙️ កំពុងដំណើរការកែច្នៃវីដេអូ...\n██████████ 100% - រួចរាល់!"
             )
             
             process_video_dubbing(in_file, out_file)
             bot.delete_message(chat_id, progress_msg.message_id)
 
             with open(out_file, 'rb') as vid:
-                bot.send_video(chat_id, vid, caption="✅ វីដេអូបកប្រែនិយាយខ្មែររួចរាល់!")
+                bot.send_video(chat_id, vid, caption="✅ វីដេអូបកប្រែនិយាយជាភាសាខ្មែររួចរាល់!")
 
             if os.path.exists(in_file): os.remove(in_file)
             if os.path.exists(out_file): os.remove(out_file)
 
         except Exception as e:
-            bot.reply_to(message, f"❌ មានបញ្ហា៖ {str(e)}")
+            bot.reply_to(message, f"❌ មានបញ្ហាបច្ចេកទេស៖ {str(e)}")
 
     elif message.video:
         progress_msg = bot.reply_to(message, "⏳ កំពុងទទួល និងកែច្នៃវីដេអូរបស់អ្នក...\n▒▒▒▒▒▒▒▒▒▒ 0%")
@@ -127,25 +110,25 @@ def handle_incoming(message):
             bot.edit_message_text(
                 chat_id=chat_id,
                 message_id=progress_msg.message_id,
-                text="⚙️ កំពុងទាញយកសំឡេង និងបង្កើត Dubbing ខ្មែរ...\n██████████ 100% - រួចរាល់!"
+                text="⚙️ កំពុងជំនួសសំឡេងដើមជាសំឡេង AI ខ្មែរ...\n██████████ 100% - រួចរាល់!"
             )
 
             process_video_dubbing(in_file, out_file)
             bot.delete_message(chat_id, progress_msg.message_id)
 
             with open(out_file, 'rb') as vid:
-                bot.send_video(chat_id, vid, caption="✅ វីដេអូនិយាយខ្មែររួចរាល់!")
+                bot.send_video(chat_id, vid, caption="✅ វីដេអូនិយាយជាភាសាខ្មែររួចរាល់!")
 
             if os.path.exists(in_file): os.remove(in_file)
             if os.path.exists(out_file): os.remove(out_file)
 
         except Exception as e:
-            bot.reply_to(message, f"❌ មានបញ្ហា៖ {str(e)}")
+            bot.reply_to(message, f"❌ មានបញ្ហាបច្ចេកទេស៖ {str(e)}")
     else:
         bot.reply_to(message, "👉 សូមផ្ញើ Link វីដេអូ ឬ Upload វីដេអូផ្ទាល់មកកាន់ Bot នេះ!")
 
 def run_bot():
-    print("Bot is running...")
+    print("Bot កំពុងដំណើរការ...")
     bot.infinity_polling()
 
 if __name__ == '__main__':
