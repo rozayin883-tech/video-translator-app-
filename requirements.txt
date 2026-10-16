@@ -4,4 +4,3 @@ requests
 flask
 edge-tts
 moviepy
-openai-whisper
